@@ -1,43 +1,100 @@
 import express from "express";
-import fs from "fs";
+import { Pool } from "pg";
 import path from "path";
 
 const app = express();
-const PORT = process.env.PORT || 5000; // Render يحدد هذا تلقائيًا
+const PORT = process.env.PORT || 5000;
+
+// -------------------------------------------------------------------
+// 1. إعداد قاعدة البيانات (PostgreSQL)
+// -------------------------------------------------------------------
+
+// Render يستخدم متغير البيئة DATABASE_URL للاتصال بقاعدة البيانات
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false, // مطلوب للاتصال بقواعد بيانات Render
+  },
+});
+
+// دالة لإنشاء الجدول إذا لم يكن موجودًا
+async function createTable() {
+  try {
+    const client = await pool.connect();
+    const query = `
+      CREATE TABLE IF NOT EXISTS registrations (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        phone VARCHAR(50) NOT NULL,
+        registration_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+    await client.query(query);
+    client.release();
+    console.log("✅ تم التحقق من جدول registrations وإنشائه بنجاح.");
+  } catch (err) {
+    console.error("❌ خطأ في إنشاء الجدول:", err);
+  }
+}
+
+// تشغيل دالة إنشاء الجدول عند بدء تشغيل الخادم (سنقوم بتشغيلها بعد بدء الاستماع)
+
+// -------------------------------------------------------------------
+// 2. إعداد الخادم
+// -------------------------------------------------------------------
+
+// مسار لعرض index.html عند زيارة المسار الجذر
+app.get("/", (req, res) => {
+  res.sendFile(path.join(process.cwd(), "public", "index.html"));
+});
 
 // إعداد مجلد public للملفات الثابتة
 app.use(express.static("public"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// مسار ملف البيانات
-const DATA_FILE = path.join(process.cwd(), "data.json");
+// -------------------------------------------------------------------
+// 3. مسار التسجيل (POST endpoint)
+// -------------------------------------------------------------------
 
-// POST endpoint لتسجيل البيانات
-app.post("/register", (req, res) => {
+app.post("/register", async (req, res) => {
   const { name, email, phone } = req.body;
 
   if (!name || !email || !phone) {
     return res.status(400).json({ error: "الرجاء ملء جميع الحقول" });
   }
 
-  const newEntry = { name, email, phone, date: new Date().toISOString() };
+  try {
+    const query = `
+      INSERT INTO registrations (name, email, phone)
+      VALUES ($1, $2, $3)
+      RETURNING id, registration_date;
+    `;
+    const values = [name, email, phone];
+    
+    const result = await pool.query(query, values);
 
-  let entries = [];
-  if (fs.existsSync(DATA_FILE)) {
-    const fileData = fs.readFileSync(DATA_FILE, "utf8");
-    if (fileData) entries = JSON.parse(fileData);
+    console.log("✅ تم حفظ تسجيل جديد (ID:", result.rows[0].id, ")");
+    res.json({ message: "تم التسجيل بنجاح ✅" });
+  } catch (error) {
+    console.error("❌ خطأ في حفظ البيانات في قاعدة البيانات:", error);
+    
+    // التحقق من خطأ تكرار البريد الإلكتروني (PostgreSQL error code 23505)
+    if (error.code === '23505') {
+        return res.status(409).json({ error: "هذا البريد الإلكتروني مسجل بالفعل." });
+    }
+
+    return res.status(500).json({ error: "خطأ داخلي في الخادم أثناء التسجيل." });
   }
-
-  entries.push(newEntry);
-
-  fs.writeFileSync(DATA_FILE, JSON.stringify(entries, null, 2));
-
-  console.log("✅ تم حفظ تسجيل جديد:", newEntry);
-  res.json({ message: "تم التسجيل بنجاح ✅" });
 });
 
-// تشغيل السيرفر
+// -------------------------------------------------------------------
+// 4. تشغيل السيرفر
+// -------------------------------------------------------------------
+
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
+  // تشغيل دالة إنشاء الجدول بعد بدء تشغيل الخادم
+  createTable();
 });
