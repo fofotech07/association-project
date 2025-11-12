@@ -44,13 +44,10 @@ async function createTable() {
 // 2. إعداد الخادم
 // -------------------------------------------------------------------
 
-// مسار لعرض index.html عند زيارة المسار الجذر
-app.get("/", (req, res) => {
-  res.sendFile(path.join(process.cwd(), "public", "index.html"));
-});
-
-// إعداد مجلد public للملفات الثابتة
+// إعداد مجلد public للملفات الثابتة. هذا يعالج عرض index.html تلقائياً.
 app.use(express.static("public"));
+
+// مسار الجذر (/) سيتم معالجته بواسطة express.static("public")
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -87,6 +84,11 @@ app.post("/register", async (req, res) => {
 
     return res.status(500).json({ error: "خطأ داخلي في الخادم أثناء التسجيل." });
   }
+});
+
+// مسار احتياطي لضمان عرض index.html عند زيارة المسار الجذر (/)
+app.get("/", (req, res) => {
+  res.sendFile(path.join(process.cwd(), "public", "index.html"));
 });
 
 // -------------------------------------------------------------------
