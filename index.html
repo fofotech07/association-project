@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>نموذج التسجيل</title>
+<style>
+body { font-family: Tahoma; display:flex; justify-content:center; align-items:center; height:100vh; background:#f4f6f9; }
+form { background:#fff; padding:25px; border-radius:15px; box-shadow:0 4px 10px rgba(0,0,0,0.1); width:350px; text-align:center; }
+input { width:90%; padding:10px; margin:8px 0; border-radius:8px; border:1px solid #ccc; }
+button { width:95%; padding:10px; border:none; border-radius:8px; background:#007bff; color:white; cursor:pointer; }
+button:hover { background:#0056b3; }
+.msg { margin-top:15px; font-weight:bold; }
+</style>
+</head>
+<body>
+<form id="registerForm">
+<h2>استمارة التسجيل</h2>
+<input type="text" id="name" placeholder="الاسم" required>
+<input type="email" id="email" placeholder="البريد" required>
+<input type="text" id="phone" placeholder="الهاتف" required>
+<button type="submit">إرسال</button>
+<div class="msg" id="msg"></div>
+</form>
+
+<script>
+document.getElementById("registerForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = document.getElementById("name").value;
+  const email = document.getElementById("email").value;
+  const phone = document.getElementById("phone").value;
+  const msg = document.getElementById("msg");
+  msg.textContent = "⏳ جاري الإرسال...";
+  try {
+    const res = await fetch("/register", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({name,email,phone})
+    });
+    
+    const data = await res.json(); // قراءة الاستجابة كـ JSON
+
+    if(res.ok){
+      msg.textContent = data.message || "✅ تم التسجيل بنجاح!";
+      msg.style.color="green";
+      document.getElementById("registerForm").reset();
+    } else {
+      // عرض رسالة الخطأ المحددة من الخادم
+      msg.textContent = data.error || "⚠️ حدث خطأ غير معروف!";
+      msg.style.color="red";
+    }
+  } catch(err){
+    msg.textContent = "🚫 لا يمكن الاتصال بالخادم!";
+    msg.style.color="red";
+  }
+});
+</script>
+</body>
+</html>
